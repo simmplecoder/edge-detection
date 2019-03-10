@@ -1,4 +1,5 @@
 #include "algorithm.hpp"
+#include <boost/gil/algorithm.hpp>
 
 void shino::apply_gaussian_blur(gil::rgb8_image_t& input_image, gil::rgb8_image_t& output_image) {
     constexpr static auto filterHeight = 5ull;
@@ -19,9 +20,7 @@ void shino::apply_gaussian_blur(gil::rgb8_image_t& input_image, gil::rgb8_image_
 
     auto input_view = gil::view(input_image);
     auto output_view = gil::view(output_image);
-    auto red_channel = mpl::int_<0>{};
-    auto green_channel = mpl::int_<1>{};
-    auto blue_channel = mpl::int_<2>{};
+
     const auto height = input_view.height();
     const auto width = input_view.width();
     for (long x = 0; x < width; ++x) {
@@ -46,4 +45,17 @@ void shino::apply_gaussian_blur(gil::rgb8_image_t& input_image, gil::rgb8_image_
         }
         
     }
+}
+
+void shino::rgb_to_grayscale(shino::image_view view) {
+    gil::transform_pixels(view, view, [](gil::rgb8_pixel_t pixel) {
+        const auto linear_intensity = (unsigned char)(0.2126f * pixel.at(red_channel) 
+                                      + 0.7512f * pixel.at(green_channel) 
+                                      + 0.0722f * pixel.at(blue_channel));
+        return gil::rgb8_pixel_t(
+            linear_intensity,
+            linear_intensity,
+            linear_intensity
+        );
+    });
 }
