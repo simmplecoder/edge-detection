@@ -1,5 +1,6 @@
 #include "algorithm.hpp"
 #include <boost/gil/algorithm.hpp>
+#include "write.hpp"
 
 namespace internal {
 template <typename T, std::size_t filterHeight, std::size_t filterWidth>
@@ -65,7 +66,7 @@ void shino::rgb_to_grayscale(shino::image_view view) {
     });
 }
 
-void shino::find_edges(shino::image_view input, shino::image_view output) {
+void shino::find_edges(shino::image_view input_view, shino::image_view output) {
     constexpr static std::size_t gradient_width = 3;
     constexpr static std::size_t gradient_height = 3;
     constexpr static char x_gradient[gradient_height][gradient_width] = {
@@ -80,5 +81,14 @@ void shino::find_edges(shino::image_view input, shino::image_view output) {
         1, 2, 1
     };
 
+    gil::rgb8_image_t x_gradient_image(input_view.width(), input_view.height());
+    auto x_gradient_view = gil::view(x_gradient_image);
+    internal::apply_filter(input_view, x_gradient_view, x_gradient, 1, 0);
+    shino::write_image("x_gradient_image.png", gil::const_view(x_gradient_image));
 
+    gil::rgb8_image_t y_gradient_image(input_view.width(), input_view.height());
+    auto y_gradient_view = gil::view(y_gradient_image);
+    internal::apply_filter(input_view, y_gradient_view, y_gradient, 1, 0);
+    shino::write_image("y_gradient_image.png", gil::const_view(y_gradient_image));
+    
 }

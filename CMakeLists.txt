@@ -14,6 +14,7 @@ add_library(writer write.hpp write.cpp)
 target_link_libraries(writer PNG::PNG)
 
 add_library(algorithm algorithm.hpp algorithm.cpp)
+target_link_libraries(algorithm writer PNG::PNG)
 
 add_executable(convolution_filter main.cpp)
 target_link_libraries(convolution_filter reader writer algorithm PNG::PNG)

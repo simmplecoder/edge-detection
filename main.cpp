@@ -8,6 +8,7 @@
 int main(int argc, char* argv[]) {
     if (argc != 2) {
         std::cerr << "usage: program filter-application-count\n";
+        return -1;
     }
     gil::rgb8_image_t image;
     shino::read_image("input.png", image);
@@ -21,6 +22,10 @@ int main(int argc, char* argv[]) {
     }
 
     shino::rgb_to_grayscale(view);
-    shino::write_image("output.png", image);
+
+    auto output_image = gil::rgb8_image_t(gil::point_t(image.width(), image.height()));
+    shino::find_edges(view, gil::view(output_image));
+    //image = output_image;
+    shino::write_image("output.png", gil::const_view(image));
     // shino::write_image("output.ong", image);
 }
