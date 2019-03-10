@@ -1,3 +1,5 @@
 cmake-build-debug/
+cmake-build-release/
 input.png
 main.s
+.idea/
