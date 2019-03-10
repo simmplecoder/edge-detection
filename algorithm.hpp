@@ -11,6 +11,7 @@ namespace shino {
     constexpr auto green_channel = mpl::int_<1>{};
     constexpr auto blue_channel = mpl::int_<2>{};    
     using image_view = decltype(gil::view(std::declval<gil::rgb8_image_t&>()));
-    void apply_gaussian_blur(gil::rgb8_image_t& input_image, gil::rgb8_image_t& output_image);
-    void rgb_to_grayscale(image_view& view);
+    void apply_gaussian_blur(shino::image_view input_image, shino::image_view output_image);
+    void rgb_to_grayscale(shino::image_view view);
+    void find_edges(shino::image_view input, shino::image_view output);
 }

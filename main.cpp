@@ -11,15 +11,16 @@ int main(int argc, char* argv[]) {
     }
     gil::rgb8_image_t image;
     shino::read_image("input.png", image);
+    auto view = gil::view(image);
 
     auto repetition_count = std::stoul(argv[1]);
     for (std::size_t i = 0; i < repetition_count; ++i) {
         auto output_image = gil::rgb8_image_t(image);
-        shino::apply_gaussian_blur(image, output_image);
+        shino::apply_gaussian_blur(view, gil::view(output_image));
         image = output_image;
     }
 
-    shino::rgb_to_grayscale(gil::view(image));
+    shino::rgb_to_grayscale(view);
     shino::write_image("output.png", image);
     // shino::write_image("output.ong", image);
 }
