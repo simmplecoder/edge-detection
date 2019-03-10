@@ -6,15 +6,15 @@ void shino::apply_gaussian_blur(gil::rgb8_image_t& input_image, gil::rgb8_image_
 
     constexpr static double filter[filterHeight][filterWidth] =
     {
-        1,  4,  6,  4,  1,
-        4, 16, 24, 16,  4,
-        6, 24, 36, 24,  6,
-        4, 16, 24, 16,  4,
-        1,  4,  6,  4,  1,
+        2,  4,  6,  4,  2,
+        4, 9, 12, 9,  4,
+        5, 12, 15, 12,  5,
+        4, 9, 12, 9,  4,
+        2,  4,  5,  4,  2,
     };
 
 
-    constexpr double factor = 1.0 / 256.0;
+    constexpr double factor = 1.0 / 159;
     constexpr double bias = 0.0;
 
     auto input_view = gil::view(input_image);
