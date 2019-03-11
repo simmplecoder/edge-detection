@@ -1,5 +1,7 @@
 #include "algorithm.hpp"
 #include <boost/gil/algorithm.hpp>
+#include <cmath>
+#include <boost/math/constants/constants.hpp>
 #include "write.hpp"
 
 namespace internal {
@@ -91,4 +93,26 @@ void shino::find_edges(shino::image_view input_view, shino::image_view output) {
     internal::apply_filter(input_view, y_gradient_view, y_gradient, 1, 0);
     shino::write_image("y_gradient_image.png", gil::const_view(y_gradient_image));
     
+    std::vector<double> gradient_directions(input_view.height() * input_view.width());
+
+    for (long y = 0; y < input_view.height(); ++y) {
+        for (long x = 0; x < input_view.width(); ++x) {
+            auto& pixel = output(gil::point_t(x, y));
+            auto x_pixel = x_gradient_view(gil::point_t(x, y));
+            auto y_pixel = y_gradient_view(gil::point_t(x, y));
+
+            // since all channels have the same intensity, there is no need to compute for others
+            auto intensity = std::sqrt(x_pixel.at(shino::red_channel) * x_pixel.at(shino::red_channel) + 
+                                       y_pixel.at(shino::red_channel) * y_pixel.at(shino::red_channel));
+
+            pixel = gil::rgb8_pixel_t(intensity, intensity, intensity);
+
+            auto direction_index = y * input_view.width() + x;
+            if (y_pixel.at(shino::red_channel) == 0) {
+                gradient_directions[direction_index] = boost::math::constants::pi<double>() / 2;
+            } else {
+                gradient_directions[direction_index] = std::atan(x_pixel.at(shino::red_channel) / (double)y_pixel.at(shino::red_channel));
+            }
+        }
+    }
 }
