@@ -5,6 +5,34 @@
 #include "write.hpp"
 
 namespace internal {
+enum class gradient_direction {
+    horizontal,
+    vertical,
+    slash, // the comments slash '/'
+    backslash // backward slash used to escape, e.g. '\'
+};
+
+gradient_direction classify_angle(double perpendicularAngle) {
+    double degrees_angle = perpendicularAngle * 180 / boost::math::constants::pi<double>();
+
+    //angle is one of -45, 0, 45, and (-)90 due to layout of pixels
+    //90 degrees offset should be taken, as degrees_angle is angle of perpendicular
+    if (degrees_angle >= 67.5) {
+        return gradient_direction::horizontal;
+    }
+    else if (degrees_angle >= -22.5 && degrees_angle < 22.5) {
+        return gradient_direction::vertical;
+    } else if (degrees_angle >= 22.5 && degrees_angle < 67.5) {
+        return gradient_direction::backslash;
+    } else if (degrees_angle >= -67.5 && degrees_angle < -22.5) {
+        return gradient_direction::slash;
+    } else if (degrees_angle < -67.5) {
+        return gradient_direction::horizontal;
+    }
+
+    throw std::logic_error("not all cases of angle were covered");
+}
+
 template <typename T, std::size_t filterHeight, std::size_t filterWidth>
 void apply_filter(shino::image_view input_view, shino::image_view output_view, 
                   const T (&filter)[filterHeight][filterWidth],
@@ -33,6 +61,92 @@ void apply_filter(shino::image_view input_view, shino::image_view output_view,
         }
         
     }
+}
+
+bool is_local_maximum(shino::image_view view, long int x, long int y, gradient_direction direction) {
+    static const auto black_pixel = gil::rgb8_pixel_t(0, 0, 0);
+    gil::rgb8_pixel_t left_pixel;
+    gil::rgb8_pixel_t right_pixel;
+    auto target_pixel = view(x, y);
+    switch (direction) {
+    case gradient_direction::horizontal:
+        if (x == 0) {
+            left_pixel = black_pixel;
+        } else {
+            left_pixel = view(x - 1, y);
+        }
+
+
+        if (x == view.width() - 1) {
+            right_pixel = black_pixel;
+        } else {
+            right_pixel = view(x + 1, y);
+        }
+        
+        
+        return target_pixel.at(shino::red_channel) == std::max({
+            target_pixel.at(shino::red_channel),
+            left_pixel.at(shino::red_channel),
+            right_pixel.at(shino::red_channel)
+        });
+        break;
+    case gradient_direction::vertical:
+        if (y == 0) {
+            left_pixel = black_pixel;
+        } else {
+            left_pixel = view(x, y - 1);
+        }
+
+        if (y == view.height() - 1) {
+            right_pixel = black_pixel;
+        } else {
+            right_pixel = view(x, y + 1);
+        }
+
+        return target_pixel.at(shino::red_channel) == std::max({
+            target_pixel.at(shino::red_channel),
+            left_pixel.at(shino::red_channel),
+            right_pixel.at(shino::red_channel)
+        });
+    case gradient_direction::slash:
+        if (x == 0 || y == view.height() - 1) {
+            left_pixel = black_pixel;
+        } else {
+            left_pixel = view(x - 1, y + 1);
+        }
+
+        if (x == view.width() - 1 || y == 0) {
+            right_pixel = black_pixel;
+        } else {
+            right_pixel = view(x + 1, y - 1);
+        }
+
+        return target_pixel.at(shino::red_channel) == std::max({
+            target_pixel.at(shino::red_channel),
+            left_pixel.at(shino::red_channel),
+            right_pixel.at(shino::red_channel)
+        });
+    case gradient_direction::backslash:
+        if (x == 0 || y == 0) {
+            left_pixel = black_pixel;
+        } else {
+            left_pixel = view(x - 1, y - 1);
+        }
+
+        if (x == view.width() - 1 || y == view.height() - 1) {
+            right_pixel = black_pixel;
+        } else {
+            right_pixel = view(x + 1, y + 1);
+        }
+
+        return target_pixel.at(shino::red_channel) == std::max({
+            target_pixel.at(shino::red_channel),
+            left_pixel.at(shino::red_channel),
+            right_pixel.at(shino::red_channel)
+        });
+    }
+
+    throw std::logic_error("unhandled gradient direction encountered");
 }
 }
 
@@ -93,7 +207,7 @@ void shino::find_edges(shino::image_view input_view, shino::image_view output) {
     internal::apply_filter(input_view, y_gradient_view, y_gradient, 1, 0);
     shino::write_image("y_gradient_image.png", gil::const_view(y_gradient_image));
     
-    std::vector<double> gradient_directions(input_view.height() * input_view.width());
+    std::vector<internal::gradient_direction> gradient_directions(input_view.height() * input_view.width());
 
     for (long y = 0; y < input_view.height(); ++y) {
         for (long x = 0; x < input_view.width(); ++x) {
@@ -109,10 +223,21 @@ void shino::find_edges(shino::image_view input_view, shino::image_view output) {
 
             auto direction_index = y * input_view.width() + x;
             if (y_pixel.at(shino::red_channel) == 0) {
-                gradient_directions[direction_index] = boost::math::constants::pi<double>() / 2;
+                gradient_directions[direction_index] = internal::classify_angle(boost::math::constants::pi<double>() / 2);
             } else {
-                gradient_directions[direction_index] = std::atan(x_pixel.at(shino::red_channel) / (double)y_pixel.at(shino::red_channel));
+                gradient_directions[direction_index] = internal::classify_angle(std::atan(y_pixel.at(shino::red_channel) 
+                                                                                / (double)x_pixel.at(shino::red_channel)));
             }
         }
     }
+
+    for (long y = 0; y < output.height(); ++y) {
+        for (long x = 0; x < output.width(); ++x) {
+            if (!internal::is_local_maximum(output, x, y, gradient_directions[y * output.width() + x])) {
+                output(x, y) = gil::rgb8_pixel_t(0, 0, 0);
+            }
+        }
+    }
+
+    shino::write_image("non-max-suppression.png", output);
 }
