@@ -13,5 +13,5 @@ namespace shino {
     using image_view = decltype(gil::view(std::declval<gil::rgb8_image_t&>()));
     void apply_gaussian_blur(shino::image_view input_image, shino::image_view output_image);
     void rgb_to_grayscale(shino::image_view view);
-    void find_edges(shino::image_view input, shino::image_view output);
+    void find_edges(shino::image_view input, shino::image_view output, double upper_threshold, double lower_threshold);
 }

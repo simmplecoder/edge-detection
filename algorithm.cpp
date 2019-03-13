@@ -172,16 +172,12 @@ void perform_bfs(shino::image_view view, long int x, long int y,
                  std::vector<internal::coordinate_pair>& bucket) {
     if (visited[index_from_xy(x, y, view.width())])
         return;
-
-    std::cout << "width is " << view.width() << "and height is " << view.height() << '\n';
     std::queue<internal::coordinate_pair> to_visit;
     to_visit.push({x, y});
     visited[internal::index_from_xy(x, y, view.width())] = true;
-    std::cout << "performing bfs with x " << x << " and y " << y << '\n';
     while (!to_visit.empty()) {
         auto current = to_visit.front();
         to_visit.pop();
-                std::cout << "entered visitation loop with x " << current.x << " and y " << current.y << "\n";
         
         //clockwise, from left upper
         internal::coordinate_pair neighbors[] = {
@@ -196,18 +192,14 @@ void perform_bfs(shino::image_view view, long int x, long int y,
         };
 
         bucket.push_back(current);
-        //visited[internal::index_from_xy(current.x, current.y, view.width())] = true;
-        std::cout << "entering neighbors loop\n";
         for (auto coordinate: neighbors) {
             auto index = index_from_xy(coordinate.x, coordinate.y, view.width());
-            std::cout << "performing neighbor check with x " << coordinate.x << " and y " << coordinate.y << "\n";
             if (coordinate.x == -1 || coordinate.y == view.width()
                 || coordinate.y == -1 || coordinate.y == view.height()
                 || visited[index] 
                 || edge_labels[index] == edge_category::definitely_not_edge) {
                 continue;
             }
-            std::cout << "accepted\n";
             to_visit.push(coordinate);
             visited[internal::index_from_xy(coordinate.x, coordinate.y, view.width())] = true;
         }
@@ -238,21 +230,21 @@ void perform_hysteresis(shino::image_view view,
     constexpr auto max_intensity = std::numeric_limits<std::uint8_t>::max();
     const auto white = gil::rgb8_pixel_t(max_intensity, max_intensity, max_intensity);
     const auto black = gil::rgb8_pixel_t(0, 0, 0);
-    // for (long int y = 0; y < view.height(); ++y) {
-    //     for (long int x = 0; x < view.width(); ++x) {
-    //         std::vector<internal::coordinate_pair> new_bucket;
-    //         perform_bfs(view, x, y, visited, edge_labels, new_bucket);
-    //         auto has_definitely_edge = std::any_of(new_bucket.cbegin(), new_bucket.cend(), [&edge_labels, width = view.width()](internal::coordinate_pair coordinate) {
-    //             auto index = internal::index_from_xy(coordinate.x, coordinate.y, width);
-    //             return edge_labels[index] == edge_category::definitely_edge;
-    //         });
-    //         auto label = has_definitely_edge ? edge_category::definitely_edge : edge_category::definitely_not_edge;
+    for (long int y = 0; y < view.height(); ++y) {
+        for (long int x = 0; x < view.width(); ++x) {
+            std::vector<internal::coordinate_pair> new_bucket;
+            perform_bfs(view, x, y, visited, edge_labels, new_bucket);
+            auto has_definitely_edge = std::any_of(new_bucket.cbegin(), new_bucket.cend(), [&edge_labels, width = view.width()](internal::coordinate_pair coordinate) {
+                auto index = internal::index_from_xy(coordinate.x, coordinate.y, width);
+                return edge_labels[index] == edge_category::definitely_edge;
+            });
+            auto label = has_definitely_edge ? edge_category::definitely_edge : edge_category::definitely_not_edge;
             
-    //         for (auto coordinate: new_bucket) {
-    //             edge_labels[internal::index_from_xy(coordinate.x, coordinate.y, view.width())] = label;
-    //         }
-    //     }
-    // }
+            for (auto coordinate: new_bucket) {
+                edge_labels[internal::index_from_xy(coordinate.x, coordinate.y, view.width())] = label;
+            }
+        }
+    }
 
     for (long int y = 0; y < view.height(); ++y) {
         for (long int x = 0; x < view.width(); ++x) {
@@ -295,7 +287,7 @@ void shino::rgb_to_grayscale(shino::image_view view) {
     });
 }
 
-void shino::find_edges(shino::image_view input_view, shino::image_view output) {
+void shino::find_edges(shino::image_view input_view, shino::image_view output, double upper_threshold, double lower_threshold) {
     constexpr static std::size_t gradient_width = 3;
     constexpr static std::size_t gradient_height = 3;
     constexpr static char x_gradient[gradient_height][gradient_width] = {
@@ -356,5 +348,5 @@ void shino::find_edges(shino::image_view input_view, shino::image_view output) {
 
     shino::write_image("non-max-suppression.png", output);
 
-    internal::perform_hysteresis(output, 0.7, 0.3);
+    internal::perform_hysteresis(output, upper_threshold, lower_threshold);
 }
