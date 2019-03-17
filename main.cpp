@@ -26,8 +26,7 @@ int main(int argc, char* argv[]) {
     image = output_image;
     }
 
-    auto output_image = gil::rgb8_image_t(gil::point_t(image.width(), image.height()));
+    auto output_image = gil::gray8_image_t(gil::point_t(image.width(), image.height()));
     shino::find_edges(view, gil::view(output_image), upper_threshold, lower_threshold);
-    image = output_image;
-    shino::write_image(output_fname, gil::const_view(image));
+    shino::write_image(output_fname, gil::view(output_image));
 }

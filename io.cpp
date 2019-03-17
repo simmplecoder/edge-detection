@@ -33,7 +33,21 @@ namespace internal {
     }
 }
 
-void shino::write_image(const std::string& filename, shino::const_image_view image_view) {
+void shino::write_image(const std::string& filename, shino::image_view image_view) {
+    auto format = internal::get_format(filename);
+    switch (format) {
+    case internal::format::png:
+        gil::write_view(filename, image_view, gil::image_write_info<gil::png_tag>());
+        break;
+    case internal::format::jpeg:
+        gil::write_view(filename, image_view, gil::image_write_info<gil::jpeg_tag>());
+        break;
+    default:
+        throw std::logic_error("unhandled internal image format encountered");
+    }
+}
+
+void shino::write_image(const std::string& filename, shino::gray_image_view image_view) {
     auto format = internal::get_format(filename);
     switch (format) {
     case internal::format::png:
