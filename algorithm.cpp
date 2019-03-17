@@ -26,6 +26,10 @@ enum class edge_category {
 
 using coordinate_pair = gil::point_t;
 
+std::size_t index_from_xy(int x, int y, long int width) {
+    return y * width + x;
+}
+
 gradient_direction classify_angle(double perpendicularAngle) {
     double degrees_angle = perpendicularAngle * 180 / boost::math::constants::pi<double>();
 
@@ -147,8 +151,58 @@ bool is_local_maximum(shino::gray_image_view view, long int x, long int y, gradi
     });
 }
 
-std::size_t index_from_xy(int x, int y, long int width) {
-    return y * width + x;
+std::vector<internal::gradient_direction> apply_sobel_operator(shino::image_view input_view, shino::gray_image_view output) {
+    constexpr static std::size_t gradient_width = 3;
+    constexpr static std::size_t gradient_height = 3;
+    constexpr static char x_gradient[gradient_height][gradient_width] = {
+        -1, 0, 1,
+        -2, 0, 2,
+        -1, 0, 1
+    };
+
+    constexpr static char y_gradient[gradient_height][gradient_width] = {
+        -1, -2, -1,
+        0, 0, 0,
+        1, 2, 1
+    };
+    std::vector<internal::gradient_direction> gradient_directions(input_view.size());
+    gil::rgb8_image_t x_gradient_image(input_view.dimensions());
+    auto x_gradient_view = gil::view(x_gradient_image);
+    internal::apply_filter(input_view, x_gradient_view, x_gradient, 1, 0);
+#ifndef LEAN_AND_MEAN
+    shino::write_image("x_gradient_image.png", gil::view(x_gradient_image));
+#endif
+
+    gil::rgb8_image_t y_gradient_image(input_view.dimensions());
+    auto y_gradient_view = gil::view(y_gradient_image);
+    internal::apply_filter(input_view, y_gradient_view, y_gradient, 1, 0);
+#ifndef LEAN_AND_MEAN
+    shino::write_image("y_gradient_image.png", gil::view(y_gradient_image));
+#endif
+
+    for (long y = 0; y < input_view.height(); ++y) {
+        for (long x = 0; x < input_view.width(); ++x) {
+            auto& pixel = output(gil::point_t(x, y));
+            auto x_pixel = x_gradient_view(gil::point_t(x, y));
+            auto y_pixel = y_gradient_view(gil::point_t(x, y));
+
+            // since all channels have the same intensity, there is no need to compute for others
+            auto intensity = (std::uint8_t)std::sqrt(x_pixel.at(shino::red_channel) * x_pixel.at(shino::red_channel) + 
+                                                     y_pixel.at(shino::red_channel) * y_pixel.at(shino::red_channel));
+
+            pixel = gil::gray8_pixel_t(intensity);
+
+            auto direction_index = y * input_view.width() + x;
+            if (y_pixel.at(shino::red_channel) == shino::black_gray_pixel.at(shino::red_channel)) {
+                gradient_directions[direction_index] = internal::classify_angle(boost::math::constants::pi<double>() / 2);
+            } else {
+                gradient_directions[direction_index] = internal::classify_angle(std::atan(y_pixel.at(shino::red_channel) 
+                                                                                          / (double)x_pixel.at(shino::red_channel)));
+            }
+        }
+    }
+
+    return gradient_directions;
 }
 
 void perform_hysteresis(shino::gray_image_view view, 
@@ -216,8 +270,23 @@ void perform_hysteresis(shino::gray_image_view view,
     }
 }
 
-void perform_non_max_suppression(shino::image_view view) {
-    
+void perform_non_max_suppression(shino::gray_image_view view, 
+                                 const std::vector<gradient_direction>& gradient_directions) {
+        std::vector<bool> maximums(view.size());
+    for (long y = 0; y < view.height(); ++y) {
+        for (long x = 0; x < view.width(); ++x) {
+            maximums[internal::index_from_xy(x, y, view.width())] = 
+                internal::is_local_maximum(view, x, y, gradient_directions[y * view.width() + x]);
+        }
+    }
+
+    for (long y = 0; y < view.height(); ++y) {
+        for (long x = 0; x < view.width(); ++x) {
+            if (!maximums[internal::index_from_xy(x, y, view.width())]) {
+                view(x, y) = gil::rgb8_pixel_t(0,0,0);
+            }
+        }
+    }
 }
 }
 
@@ -241,76 +310,21 @@ void shino::apply_gaussian_blur(shino::image_view input_view, shino::image_view 
 }
 
 void shino::find_edges(shino::image_view input_view, shino::gray_image_view output, double upper_threshold, double lower_threshold) {
-    constexpr static std::size_t gradient_width = 3;
-    constexpr static std::size_t gradient_height = 3;
-    constexpr static char x_gradient[gradient_height][gradient_width] = {
-        -1, 0, 1,
-        -2, 0, 2,
-        -1, 0, 1
-    };
+    gil::rgb8_image_t temporary_image(output.dimensions());
+    shino::apply_gaussian_blur(input_view, gil::view(temporary_image));
 
-    constexpr static char y_gradient[gradient_height][gradient_width] = {
-        -1, -2, -1,
-        0, 0, 0,
-        1, 2, 1
-    };
-
-    gil::rgb8_image_t x_gradient_image(input_view.width(), input_view.height());
-    auto x_gradient_view = gil::view(x_gradient_image);
-    internal::apply_filter(input_view, x_gradient_view, x_gradient, 1, 0);
 #ifndef LEAN_AND_MEAN
-    shino::write_image("x_gradient_image.png", gil::view(x_gradient_image));
+    shino::write_image("after-gaussian-blur.png", output);
 #endif
+    auto gradient_directions = internal::apply_sobel_operator(gil::view(temporary_image), output);
+    temporary_image.recreate(0, 0); //minimize size for the rest of the function
 
-    gil::rgb8_image_t y_gradient_image(input_view.width(), input_view.height());
-    auto y_gradient_view = gil::view(y_gradient_image);
-    internal::apply_filter(input_view, y_gradient_view, y_gradient, 1, 0);
-#ifndef LEAN_AND_MEAN
-    shino::write_image("y_gradient_image.png", gil::view(y_gradient_image));
-#endif
-    
-    std::vector<internal::gradient_direction> gradient_directions(input_view.height() * input_view.width());
-
-    for (long y = 0; y < input_view.height(); ++y) {
-        for (long x = 0; x < input_view.width(); ++x) {
-            auto& pixel = output(gil::point_t(x, y));
-            auto x_pixel = x_gradient_view(gil::point_t(x, y));
-            auto y_pixel = y_gradient_view(gil::point_t(x, y));
-
-            // since all channels have the same intensity, there is no need to compute for others
-            auto intensity = (std::uint8_t)std::sqrt(x_pixel.at(shino::red_channel) * x_pixel.at(shino::red_channel) + 
-                                                     y_pixel.at(shino::red_channel) * y_pixel.at(shino::red_channel));
-
-            pixel = gil::gray8_pixel_t(intensity);
-
-            auto direction_index = y * input_view.width() + x;
-            if (y_pixel.at(shino::red_channel) == shino::black_gray_pixel.at(shino::red_channel)) {
-                gradient_directions[direction_index] = internal::classify_angle(boost::math::constants::pi<double>() / 2);
-            } else {
-                gradient_directions[direction_index] = internal::classify_angle(std::atan(y_pixel.at(shino::red_channel) 
-                                                                                          / (double)x_pixel.at(shino::red_channel)));
-            }
-        }
-    }
 #ifndef LEAN_AND_MEAN
     shino::write_image("after-xy-gradient.png", output);
 #endif
+    
+    internal::perform_non_max_suppression(output, gradient_directions);
 
-    std::vector<bool> maximums(input_view.size());
-    for (long y = 0; y < output.height(); ++y) {
-        for (long x = 0; x < output.width(); ++x) {
-            maximums[internal::index_from_xy(x, y, input_view.width())] = 
-                internal::is_local_maximum(output, x, y, gradient_directions[y * output.width() + x]);
-        }
-    }
-
-    for (long y = 0; y < output.height(); ++y) {
-        for (long x = 0; x < output.width(); ++x) {
-            if (!maximums[internal::index_from_xy(x, y, input_view.width())]) {
-                output(x, y) = gil::rgb8_pixel_t(0,0,0);
-            }
-        }
-    }
 #ifndef LEAN_AND_MEAN
     shino::write_image("non-max-suppression.png", output);
 #endif

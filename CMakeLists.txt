@@ -16,5 +16,3 @@ target_link_libraries(algorithm io)
 
 add_executable(convolution_filter main.cpp)
 target_link_libraries(convolution_filter io algorithm)
-
-configure_file(input.png "${CMAKE_CURRENT_BINARY_DIR}/input.png" COPYONLY)
