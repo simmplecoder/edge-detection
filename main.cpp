@@ -13,7 +13,7 @@ bool ends_with_png(const std::string& fname) {
 
 int main(int argc, char* argv[]) {
     if (argc != 5) {
-        std::cerr << "usage: program input_image.png output_image.png gauss-blur-application-count\n";
+        std::cerr << "usage: program input_image.png output_image.png upper_threshold lower_threshold\n";
         return -1;
     }
     std::string input_fname(argv[1]);
@@ -43,8 +43,6 @@ int main(int argc, char* argv[]) {
     shino::apply_gaussian_blur(view, gil::view(output_image));
     image = output_image;
     }
-
-    shino::rgb_to_grayscale(view);
 
     auto output_image = gil::rgb8_image_t(gil::point_t(image.width(), image.height()));
     shino::find_edges(view, gil::view(output_image), upper_threshold, lower_threshold);
