@@ -1,4 +1,7 @@
 #include "algorithm.hpp"
+#ifndef LEAN_AND_MEAN
+#include "io.hpp"
+#endif
 #include <boost/gil/algorithm.hpp>
 #include <cmath>
 #include <boost/math/constants/constants.hpp>
@@ -7,9 +10,6 @@
 #include <limits>
 #include <cstdint>
 #include <iostream>
-#ifndef LEAN_AND_MEAN
-#include "write.hpp"
-#endif
 
 namespace internal {
 enum class gradient_direction {
