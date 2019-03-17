@@ -1,3 +1,6 @@
+#ifndef EDGE_DETECTION_IO
+#define EDGE_DETECTION_IO
+
 #include <string>
 #include <boost/gil/image.hpp>
 
@@ -11,3 +14,4 @@ namespace shino {
     void read_image(const std::string& filename, gil::rgb8_image_t& image);
     
 }
+#endif

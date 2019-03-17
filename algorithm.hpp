@@ -1,3 +1,6 @@
+#ifndef EDGE_DETECTION_ALGORITHM
+#define EDGE_DETECTION_ALGORITHM
+
 #include <boost/gil/image_view.hpp>
 #include <boost/gil/image.hpp>
 #include <boost/gil/rgb.hpp>
@@ -23,3 +26,4 @@ namespace shino {
     void rgb_to_grayscale(shino::image_view view);
     void find_edges(shino::image_view input, shino::gray_image_view output, double upper_threshold, double lower_threshold);
 }
+#endif
