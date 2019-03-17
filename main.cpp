@@ -1,8 +1,8 @@
 #include <string>
 #include <string_view>
-#include <iostream>
 #include "io.hpp"
 #include "algorithm.hpp"
+#include <iostream>
 #include <boost/gil/image.hpp>
 
 int main(int argc, char* argv[]) {
@@ -19,12 +19,6 @@ int main(int argc, char* argv[]) {
     gil::rgb8_image_t image;
     shino::read_image(input_fname, image);
     auto view = gil::view(image);
-
-    {
-    auto output_image = gil::rgb8_image_t(image);
-    shino::apply_gaussian_blur(view, gil::view(output_image));
-    image = output_image;
-    }
 
     auto output_image = gil::gray8_image_t(gil::point_t(image.width(), image.height()));
     shino::find_edges(view, gil::view(output_image), upper_threshold, lower_threshold);
