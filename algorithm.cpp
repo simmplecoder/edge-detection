@@ -48,17 +48,15 @@ gradient_direction classify_angle(double perpendicularAngle) {
     throw std::logic_error("not all cases of gradient angle were covered");
 }
 
-template <typename T, std::size_t filterHeight, std::size_t filterWidth>
-void apply_filter(shino::image_view input_view, shino::image_view output_view, 
+template <typename InputView, typename OutputView, typename T, std::size_t filterHeight, std::size_t filterWidth>
+void apply_filter(InputView input_view, OutputView output_view, 
                   const T (&filter)[filterHeight][filterWidth],
                   double factor, double bias) {
     const auto height = input_view.height();
     const auto width = input_view.width();
     for (long x = 0; x < width; ++x) {
         for (long y = 0; y < height; ++y) {
-            double red = 0.0; 
-            double green = 0.0; 
-            double blue = 0.0;
+            double intensity = 0.0; 
             for (size_t filterY = 0; filterY < filterHeight; ++filterY) {
                 for (size_t filterX = 0; filterX < filterWidth; ++filterX) {
                     int imageX = x - filterWidth / 2 + filterX;
@@ -68,15 +66,11 @@ void apply_filter(shino::image_view input_view, shino::image_view output_view,
                         continue;
                     }
                     auto& pixel = input_view(gil::point_t(imageX, imageY));
-                    red += pixel.at(shino::red_channel) * filter[filterY][filterX];
-                    green += pixel.at(shino::green_channel) * filter[filterY][filterX];
-                    blue += pixel.at(shino::blue_channel) * filter[filterY][filterX];
+                    intensity += pixel.at(shino::red_channel) * filter[filterY][filterX];
                 }
             }
             auto& pixel = output_view(gil::point_t(x, y));
-            pixel.at(shino::red_channel) = std::min(std::max(int(factor * red + bias), 0), 255);
-            pixel.at(shino::green_channel) = std::min(std::max(int(factor * green + bias), 0), 255);
-            pixel.at(shino::blue_channel) = std::min(std::max(int(factor * blue + bias), 0), 255);
+            pixel = std::min(std::max(int(factor * intensity + bias), 0), 255);
         }
         
     }
@@ -151,7 +145,7 @@ bool is_local_maximum(shino::gray_image_view view, long int x, long int y, gradi
     });
 }
 
-std::vector<internal::gradient_direction> apply_sobel_operator(shino::image_view input_view, shino::gray_image_view output) {
+std::vector<internal::gradient_direction> apply_sobel_operator(shino::gray_image_view input_view, shino::gray_image_view output) {
     constexpr static std::size_t gradient_width = 3;
     constexpr static std::size_t gradient_height = 3;
     constexpr static char x_gradient[gradient_height][gradient_width] = {
@@ -166,14 +160,14 @@ std::vector<internal::gradient_direction> apply_sobel_operator(shino::image_view
         1, 2, 1
     };
     std::vector<internal::gradient_direction> gradient_directions(input_view.size());
-    gil::rgb8_image_t x_gradient_image(input_view.dimensions());
+    shino::gray_image x_gradient_image(input_view.dimensions());
     auto x_gradient_view = gil::view(x_gradient_image);
     internal::apply_filter(input_view, x_gradient_view, x_gradient, 1, 0);
 #ifndef LEAN_AND_MEAN
     shino::write_image("x_gradient_image.png", gil::view(x_gradient_image));
 #endif
 
-    gil::rgb8_image_t y_gradient_image(input_view.dimensions());
+    shino::gray_image y_gradient_image(input_view.dimensions());
     auto y_gradient_view = gil::view(y_gradient_image);
     internal::apply_filter(input_view, y_gradient_view, y_gradient, 1, 0);
 #ifndef LEAN_AND_MEAN
@@ -201,15 +195,18 @@ std::vector<internal::gradient_direction> apply_sobel_operator(shino::image_view
             }
         }
     }
+#ifndef LEAN_AND_MEAN
+    shino::write_image("after-xy-gradient.png", output);
+#endif
 
     return gradient_directions;
 }
 
 void perform_hysteresis(shino::gray_image_view view, 
-                        double exact_upper_threshold, 
-                        double exact_lower_threshold) {
-    const std::uint8_t upper_threshold = std::numeric_limits<std::uint8_t>::max() * exact_upper_threshold;
-    const std::uint8_t lower_threshold = std::numeric_limits<std::uint8_t>::max() * exact_lower_threshold;
+                        double scaled_upper_threshold, 
+                        double scaled_lower_threshold) {
+    const std::uint8_t upper_threshold = std::numeric_limits<std::uint8_t>::max() * scaled_upper_threshold;
+    const std::uint8_t lower_threshold = std::numeric_limits<std::uint8_t>::max() * scaled_lower_threshold;
     std::vector<internal::coordinate_pair> proved_pixels;
     std::vector<internal::edge_category> edge_labels(view.width() * view.height());
 
@@ -270,6 +267,98 @@ void perform_hysteresis(shino::gray_image_view view,
     }
 }
 
+std::vector<internal::coordinate_pair> perform_bfs(shino::gray_image_view view, long int x, long int y, 
+                 std::vector<char>& visited,
+                 std::vector<internal::edge_category>& edge_labels) {
+    std::vector<internal::coordinate_pair> bucket;
+    if (visited[index_from_xy(x, y, view.width())])
+        return {};
+
+    std::queue<internal::coordinate_pair> to_visit;
+    to_visit.push({x, y});
+    visited[internal::index_from_xy(x, y, view.width())] = true;
+    while (!to_visit.empty()) {
+        auto current = to_visit.front();
+        to_visit.pop();
+        
+        //clockwise, from left upper
+        internal::coordinate_pair neighbors[] = {
+            {current.x - 1, current.y - 1},
+            {current.x, current.y - 1},
+            {current.x + 1, current.y - 1},
+            {current.x + 1, current.y},
+            {current.x + 1, current.y + 1},
+            {current.x, current.y + 1},
+            {current.x - 1, current.y + 1},
+            {current.x - 1, current.y}
+        };
+
+        bucket.push_back(current);
+        //visited[internal::index_from_xy(current.x, current.y, view.width())] = true;
+        for (auto coordinate: neighbors) {
+            auto index = index_from_xy(coordinate.x, coordinate.y, view.width());
+            if (coordinate.x == -1 || coordinate.y == view.width()
+                || coordinate.y == -1 || coordinate.y == view.height()
+                || visited[index] 
+                || edge_labels[index] == edge_category::definitely_not_edge) {
+                continue;
+            }
+            to_visit.push(coordinate);
+            visited[internal::index_from_xy(coordinate.x, coordinate.y, view.width())] = true;
+        }
+    }
+
+    return bucket;
+}
+
+bool is_connected_to_strong_edge(const std::vector<internal::coordinate_pair>& bucket,
+                                 const std::vector<internal::edge_category>& edge_labels,
+                                 long int view_width) {
+    for (const auto coordinate: bucket) {
+        if (edge_labels[internal::index_from_xy(coordinate.x, coordinate.y, view_width)] == edge_category::definitely_edge) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void perform_bfs_hysteresis(shino::gray_image_view view, double scaled_upper_threshold, double scaled_lower_threshold) {
+    std::vector<internal::edge_category> edge_labels(view.size());
+    const std::uint8_t upper_threshold = std::numeric_limits<std::uint8_t>::max() * scaled_upper_threshold;
+    const std::uint8_t lower_threshold = std::numeric_limits<std::uint8_t>::max() * scaled_lower_threshold;
+    const auto white_pixel = std::numeric_limits<std::uint8_t>::max();
+    const auto black_pixel = (std::uint8_t)0;
+    for (long int y = 0; y < view.height(); ++y) {
+        for (long int x = 0; x < view.width(); ++x) {
+            auto value = internal::edge_category::uncertainly_edge;
+            const auto pixel = view(x, y);
+            if (pixel >= upper_threshold) {
+                value = internal::edge_category::definitely_edge;
+            } else if (pixel <= lower_threshold) {
+                value = internal::edge_category::definitely_not_edge;
+            }
+            edge_labels[internal::index_from_xy(x, y, view.width())] = value;
+        }
+    }
+
+    std::vector<char> visited(view.size());
+    for (long int y = 0; y < view.height(); ++y) {
+        for (long int x = 0; x < view.width(); ++x) {
+            auto bucket = internal::perform_bfs(view, x, y, visited, edge_labels);
+            //strong edges are unreachable from (x, y)
+            auto connected_to_strong_edge = internal::is_connected_to_strong_edge(bucket, edge_labels, view.width());
+            auto value_to_fill = connected_to_strong_edge ? white_pixel : black_pixel;
+            for (const auto coordinate : bucket) {
+                view(coordinate.x, coordinate.y) = value_to_fill;
+            }
+        }
+    }
+#ifndef LEAN_AND_MEAN
+    shino::write_image("bfs hysteresis.png", view);
+#endif
+}
+
 void perform_non_max_suppression(shino::gray_image_view view, 
                                  const std::vector<gradient_direction>& gradient_directions) {
         std::vector<bool> maximums(view.size());
@@ -287,10 +376,40 @@ void perform_non_max_suppression(shino::gray_image_view view,
             }
         }
     }
+#ifndef LEAN_AND_MEAN
+    shino::write_image("non-max-suppression.png", view);
+#endif
+
 }
 }
 
-void shino::apply_gaussian_blur(shino::image_view input_view, shino::image_view output_view) {
+void shino::rgb_to_grayscale(shino::image_view original, gray_image_view output) {
+    constexpr double max_channel_intensity = std::numeric_limits<std::uint8_t>::max();
+    for (long int y = 0; y < original.height(); ++y) {
+        for (long int x = 0; x < original.width(); ++x) {
+            // scale the values into range [0, 1] and calculate linear intensity
+            double red_intensity = original(x, y).at(shino::red_channel) / max_channel_intensity;
+            double green_intensity = original(x, y).at(shino::green_channel) / max_channel_intensity;
+            double blue_intensity = original(x, y).at(shino::blue_channel) / max_channel_intensity;
+            auto linear_luminosity = 0.2126 * red_intensity 
+                                    + 0.7152 * green_intensity 
+                                    + 0.0722 * blue_intensity;
+
+            // perform gamma adjustment
+            double gamma_compressed_luminosity = 0;
+            if (linear_luminosity < 0.0031308) {
+                gamma_compressed_luminosity = linear_luminosity * 12.92;
+            } else {
+                gamma_compressed_luminosity = 1.055 * std::pow(linear_luminosity, 1 / 2.4) - 0.055;
+            }
+
+            // since now it is scaled, descale it back
+            output(x, y) = gamma_compressed_luminosity * max_channel_intensity;
+        }
+    }
+}
+
+void shino::apply_gaussian_blur(shino::gray_image_view input_view, shino::gray_image_view output_view) {
     constexpr static auto filterHeight = 5ull;
     constexpr static auto filterWidth = 5ull;
 
@@ -307,27 +426,19 @@ void shino::apply_gaussian_blur(shino::image_view input_view, shino::image_view 
     constexpr double bias = 0.0;
 
     internal::apply_filter(input_view, output_view, filter, factor, bias);
-}
-
-void shino::find_edges(shino::image_view input_view, shino::gray_image_view output, double upper_threshold, double lower_threshold) {
-    gil::rgb8_image_t temporary_image(output.dimensions());
-    shino::apply_gaussian_blur(input_view, gil::view(temporary_image));
 
 #ifndef LEAN_AND_MEAN
-    shino::write_image("after-gaussian-blur.png", output);
+    shino::write_image("after-gaussian-blur.png", output_view);
 #endif
+}
+
+void shino::find_edges(shino::gray_image_view input_view, shino::gray_image_view output, double upper_threshold, double lower_threshold) {
+    shino::gray_image temporary_image(output.dimensions());
+    shino::apply_gaussian_blur(input_view, gil::view(temporary_image));
+
     auto gradient_directions = internal::apply_sobel_operator(gil::view(temporary_image), output);
     temporary_image.recreate(0, 0); //minimize size for the rest of the function
 
-#ifndef LEAN_AND_MEAN
-    shino::write_image("after-xy-gradient.png", output);
-#endif
-    
     internal::perform_non_max_suppression(output, gradient_directions);
-
-#ifndef LEAN_AND_MEAN
-    shino::write_image("non-max-suppression.png", output);
-#endif
-
-    internal::perform_hysteresis(output, upper_threshold, lower_threshold);
+    internal::perform_bfs_hysteresis(output, upper_threshold, lower_threshold);
 }

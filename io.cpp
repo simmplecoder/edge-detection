@@ -22,7 +22,10 @@ namespace internal {
         }
 
         auto dot_position = filename.find_last_of('.');
-        auto format = filename.substr(dot_position);
+        if (dot_position == std::string::npos) {
+            throw std::invalid_argument("no format suffix detected");
+        }
+        auto format = filename.substr(dot_position, filename.size());
         if (format == ".png") {
             return internal::format::png;
         } else if (format == ".jpg" || format == ".jpeg") {

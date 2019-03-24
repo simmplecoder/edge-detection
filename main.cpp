@@ -5,6 +5,11 @@
 #include <iostream>
 #include <boost/gil/image.hpp>
 
+#include "utility.hpp"
+
+template <std::size_t>
+struct undefined;
+
 int main(int argc, char* argv[]) {
     if (argc != 5) {
         std::cerr << "usage: program input_image.png output_image.png upper_threshold lower_threshold\n";
@@ -18,9 +23,11 @@ int main(int argc, char* argv[]) {
  
     gil::rgb8_image_t image;
     shino::read_image(input_fname, image);
-    auto view = gil::view(image);
+    shino::gray_image grayscaled_image(image.dimensions());
+    shino::rgb_to_grayscale(gil::view(image), gil::view(grayscaled_image));
+    shino::write_image("grayscaled.png", gil::view(grayscaled_image));
 
     auto output_image = gil::gray8_image_t(gil::point_t(image.width(), image.height()));
-    shino::find_edges(view, gil::view(output_image), upper_threshold, lower_threshold);
+    shino::find_edges(gil::view(grayscaled_image), gil::view(output_image), upper_threshold, lower_threshold);
     shino::write_image(output_fname, gil::view(output_image));
 }
